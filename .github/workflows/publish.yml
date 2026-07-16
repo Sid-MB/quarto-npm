@@ -18,14 +18,19 @@ name: Release
 on:
   push:
     branches: [main]
-    # Only wrapper code changes warrant a new patch; doc-only pushes are ignored.
-    # (The weekly base bump is committed via GITHUB_TOKEN, which never re-triggers
-    # a workflow, so its package.json change can't loop back through here.)
+    # Trigger on anything that changes the published package (runtime code,
+    # README, .npmignore, package.json) or the release pipeline itself. Pushes
+    # that touch nothing here (e.g. docs/) are ignored. (The weekly base bump is
+    # committed via GITHUB_TOKEN, which never re-triggers a workflow, so its
+    # package.json change can't loop back through here.)
     paths:
       - "bin/**"
       - "lib/**"
       - "scripts/**"
       - "package.json"
+      - "README.md"
+      - ".npmignore"
+      - ".github/workflows/publish.yml"
   schedule:
     # Mondays at 07:00 UTC.
     - cron: "0 7 * * 1"
