@@ -1,0 +1,7 @@
+# The downloaded Quarto tree is fetched at install time, never published.
+vendor/
+scratchpad/
+*.log
+
+# Documentation
+docs/

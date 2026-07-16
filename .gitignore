@@ -1,0 +1,16 @@
+# Downloaded/extracted Quarto tree (fetched at install time)
+vendor/
+
+# Dependencies
+node_modules/
+
+# Scratch + logs
+scratchpad/
+*.log
+npm-debug.log*
+
+# npm packaging output
+*.tgz
+
+# OS / editor cruft
+.DS_Store
