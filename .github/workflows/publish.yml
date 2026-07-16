@@ -1,0 +1,89 @@
+name: Release
+
+# Single publishing workflow (npm Trusted Publishing is bound to this file's
+# name, so all publishes must originate here). It handles two things:
+#
+#   1. Weekly Quarto tracking (schedule / manual): if upstream shipped a newer
+#      Quarto, bump package.json to match and push the commit.
+#   2. Publish-on-change (every trigger): if the version in package.json is not
+#      yet on npm, publish it and tag the release. npm versions are immutable, so
+#      this check is both the change-detector and the guard against re-publishing.
+#
+# So a push to main that bumps `version` (e.g. a wrapper patch 1.9.38-patch.1)
+# publishes automatically, and the weekly job publishes Quarto upgrades — both
+# from this one authorized workflow.
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Mondays at 07:00 UTC.
+    - cron: "0 7 * * 1"
+  workflow_dispatch: # allow manual runs from the Actions tab
+
+permissions:
+  contents: write # commit + push the version bump and tag
+  id-token: write # OIDC trusted publishing to npm (no stored token)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm >= 11.5.1; Node 20 ships an older npm.
+      - name: Update npm
+        run: npm install -g npm@latest
+
+      # Only the scheduled/manual runs look upstream for a newer Quarto release.
+      # A push already carries whatever version the committer set.
+      - name: Check for a newer Quarto release
+        if: github.event_name != 'push'
+        id: sync
+        run: node scripts/sync-version.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit and push the version bump
+        if: github.event_name != 'push' && steps.sync.outputs.updated == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: update Quarto to ${{ steps.sync.outputs.version }}"
+          git push
+
+      - name: Determine whether this version needs publishing
+        id: check
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ -n "$(npm view "$NAME@$VERSION" version 2>/dev/null)" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "$NAME@$VERSION is already published; nothing to do."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "$NAME@$VERSION is not published; publishing."
+          fi
+
+      # No NODE_AUTH_TOKEN: npm exchanges the GitHub OIDC token for a one-time
+      # publish credential and attaches provenance automatically.
+      - name: Publish to npm
+        if: steps.check.outputs.publish == 'true'
+        run: npm publish
+
+      - name: Tag the release
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TAG="v${{ steps.check.outputs.version }}"
+          # Non-fatal: the tag may already exist from an earlier run.
+          git tag "$TAG" && git push origin "$TAG" || echo "tag $TAG already exists; skipping."

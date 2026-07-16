@@ -3,7 +3,7 @@
 
 // Checks the latest Quarto release on GitHub and, if it is newer than the version
 // in package.json, rewrites package.json to match. Used by the weekly
-// update-quarto GitHub workflow to keep `@lillies/quarto` in sync with upstream.
+// publish GitHub workflow to keep `@lillies/quarto` in sync with upstream.
 //
 // Outputs (when run in GitHub Actions, i.e. GITHUB_OUTPUT is set):
 //   updated=<true|false>
@@ -15,6 +15,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { quartoBaseVersion } = require("../lib/platform");
 
 const PKG_PATH = path.join(__dirname, "..", "package.json");
 
@@ -61,12 +62,15 @@ async function main() {
 
   const pkg = JSON.parse(fs.readFileSync(PKG_PATH, "utf8"));
   const current = pkg.version;
+  // Compare against the base Quarto version so a wrapper-only patch release
+  // (e.g. "1.9.38-patch.1") is still treated as "on 1.9.38" and not clobbered.
+  const currentBase = quartoBaseVersion(current);
 
   setOutput("previous", current);
   setOutput("version", latest);
 
-  if (compareVersions(latest, current) <= 0) {
-    console.log(`Already up to date (current ${current}, latest ${latest}).`);
+  if (compareVersions(latest, currentBase) <= 0) {
+    console.log(`Already up to date (Quarto ${currentBase}, latest ${latest}).`);
     setOutput("updated", "false");
     return;
   }
