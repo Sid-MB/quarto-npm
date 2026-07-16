@@ -4,7 +4,7 @@
   "description": "Distributes the Quarto CLI as an npm package. Run `npx @lillies/quarto` to use Quarto without a system install.",
   "keywords": ["quarto", "cli", "pandoc", "markdown", "publishing", "typst"],
   "license": "MIT",
-  "homepage": "https://quarto.org",
+  "homepage": "https://sidmb.com",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Sid-MB/quarto-npm.git"
