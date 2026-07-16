@@ -45,12 +45,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24 # current Active LTS (Node 20 is EOL)
           registry-url: https://registry.npmjs.org
 
-      # Trusted publishing needs npm >= 11.5.1; Node 20 ships an older npm.
+      # Trusted publishing needs npm >= 11.5.1. Pin to npm@11 (not @latest) for
+      # reproducibility: floating @latest is what previously rolled to npm@12 and
+      # broke the runner. npm@11 satisfies both the >= 11.5.1 floor and Node 24.
       - name: Update npm
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       # Only the scheduled/manual runs look upstream for a newer Quarto release.
       # A push already carries whatever version the committer set.
