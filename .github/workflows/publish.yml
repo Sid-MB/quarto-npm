@@ -1,20 +1,31 @@
 name: Release
 
 # Single publishing workflow (npm Trusted Publishing is bound to this file's
-# name, so all publishes must originate here). It handles two things:
+# name, so all publishes must originate here). It handles two release channels:
 #
-#   1. Weekly Quarto tracking (schedule / manual): if upstream shipped a newer
-#      Quarto, bump package.json to match and push the commit.
-#   2. Publish-on-change (every trigger): if the version in package.json is not
-#      yet on npm, publish it and tag the release. npm versions are immutable, so
-#      this check is both the change-detector and the guard against re-publishing.
+#   1. Quarto tracking (weekly schedule / manual): if upstream shipped a newer
+#      Quarto, sync-version.js bumps package.json to match and commits it; that
+#      new base `X.Y.Z` is then published as a stable release.
+#   2. Wrapper patches (push to main touching wrapper code): plan-release.js
+#      publishes the next prerelease `X.Y.Z-wrapper-patch.N` for the current
+#      Quarto version, so wrapper-only fixes ship immediately without waiting on
+#      a Quarto release. N is derived from the registry, so nothing is committed
+#      back for a wrapper patch (no trigger loop).
 #
-# So a push to main that bumps `version` (e.g. a wrapper patch 1.9.38-patch.1)
-# publishes automatically, and the weekly job publishes Quarto upgrades — both
-# from this one authorized workflow.
+# plan-release.js is the single decision point: it picks stable vs wrapper (or
+# "nothing to do") and writes the version into package.json for `npm publish`.
+# npm versions are immutable, so it also guards against re-publishing.
 on:
   push:
     branches: [main]
+    # Only wrapper code changes warrant a new patch; doc-only pushes are ignored.
+    # (The weekly base bump is committed via GITHUB_TOKEN, which never re-triggers
+    # a workflow, so its package.json change can't loop back through here.)
+    paths:
+      - "bin/**"
+      - "lib/**"
+      - "scripts/**"
+      - "package.json"
   schedule:
     # Mondays at 07:00 UTC.
     - cron: "0 7 * * 1"
@@ -59,31 +70,27 @@ jobs:
           git commit -m "chore: update Quarto to ${{ steps.sync.outputs.version }}"
           git push
 
-      - name: Determine whether this version needs publishing
-        id: check
-        run: |
-          NAME=$(node -p "require('./package.json').name")
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if [ -n "$(npm view "$NAME@$VERSION" version 2>/dev/null)" ]; then
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "$NAME@$VERSION is already published; nothing to do."
-          else
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "$NAME@$VERSION is not published; publishing."
-          fi
+      # Decide the version to publish (stable base vs. next wrapper prerelease)
+      # and write it into package.json. Emits publish=<true|false>, version, mode.
+      - name: Plan release
+        id: plan
+        run: node scripts/plan-release.js
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SYNC_UPDATED: ${{ steps.sync.outputs.updated }}
 
       # No NODE_AUTH_TOKEN: npm exchanges the GitHub OIDC token for a one-time
-      # publish credential and attaches provenance automatically.
+      # publish credential and attaches provenance automatically. `--tag latest`
+      # makes even a wrapper prerelease the default `npx @lillies/quarto` install.
       - name: Publish to npm
-        if: steps.check.outputs.publish == 'true'
-        run: npm publish
+        if: steps.plan.outputs.publish == 'true'
+        run: npm publish --tag latest
 
       - name: Tag the release
-        if: steps.check.outputs.publish == 'true'
+        if: steps.plan.outputs.publish == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          TAG="v${{ steps.check.outputs.version }}"
+          TAG="v${{ steps.plan.outputs.version }}"
           # Non-fatal: the tag may already exist from an earlier run.
           git tag "$TAG" && git push origin "$TAG" || echo "tag $TAG already exists; skipping."
