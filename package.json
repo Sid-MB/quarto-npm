@@ -1,6 +1,6 @@
 {
   "name": "@lillies/quarto",
-  "version": "1.10.18",
+  "version": "1.10.19",
   "description": "Distributes the Quarto CLI as an npm package. Run `npx @lillies/quarto` to use Quarto without a system install.",
   "keywords": [
     "quarto",
